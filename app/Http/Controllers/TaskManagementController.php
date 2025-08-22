@@ -41,12 +41,8 @@ class TaskManagementController extends Controller
         ]);
     }
 
-    
-
     public function edit($id)
     {
-
-
 
         $task = Task::findOrFail($id);
 
