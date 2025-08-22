@@ -4,81 +4,95 @@ namespace App\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
+use Tymon\JWTAuth\Facades\JWTAuth;
+use Tymon\JWTAuth\Exceptions\JWTException;
 
 class AuthController extends Controller
 {
-    public function showLogin()
+     public function register(Request $request)
     {
-        return view('auth.login');
-    }
-
-    public function showRegister()
-    {
-        return view('auth.register');
-    }
-
-    public function login(Request $request) {
-
-        $credentials = $request->validate([
-            'email'    => 'required|email',
-            'password' => 'required',
-        ]);
-
-        if (Auth::attempt($credentials, $request->boolean('remember'))) {
-            $request->session()->regenerate();
-            return redirect()->route('task.index');
-        }
-
-        return back()->withErrors([
-            'email' => 'Invalid credentials provided.',
-        ])->onlyInput('email');
-    }
-
-
-    public function logout(Request $request){
-        Auth::logout();
-
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-
-        return redirect()->route('login');
-    }
-
-    public function forgetPassword(Request $request) {
-        $request->validate($request, [
-            'email' => 'required|email',
-        ]);
-
-        // Logic for sending password reset link
-        // ...
-
-        return redirect()->back()->with('success', 'Password reset link sent to your email');
-    }   
-
-    public function register(Request $request) {
-           $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|email|unique:users',
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:6|confirmed',
         ]);
 
         $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
+            'name' => $request->name,
+            'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);
 
-        // $token = $user->createToken('api_token')->plainTextToken;
+        try {
+            $token = JWTAuth::fromUser($user);
+        } catch (JWTException $e) {
+            return response()->json(['error' => 'Could not create token'], 500);
+        }
 
-        redirect()->route('login')->with('success', 'Registration successful. Please login.');
+        return response()->json([
+            'token' => $token,
+            'user' => $user,
+        ], 201);
     }
 
-    public function showLoginForm() {
-        return view('auth.login');
+    public function login(Request $request)
+    {
+        $credentials = $request->only('email', 'password');
+
+        try {
+            if (!$token = JWTAuth::attempt($credentials)) {
+                return response()->json(['error' => 'Invalid credentials'], 401);
+            }
+        } catch (JWTException $e) {
+            return response()->json(['error' => 'Could not create token'], 500);
+        }
+
+        return response()->json([
+            'token' => $token,
+            'expires_in' => auth('api')->factory()->getTTL() * 60,
+        ]);
     }
 
+    public function logout()
+    {
+        try {
+            JWTAuth::invalidate(JWTAuth::getToken());
+        } catch (JWTException $e) {
+            return response()->json(['error' => 'Failed to logout, please try again'], 500);
+        }
+
+        return response()->json(['message' => 'Successfully logged out']);
+    }
+
+    public function getUser()
+    {
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'User not found'], 404);
+            }
+            return response()->json($user);
+        } catch (JWTException $e) {
+            return response()->json(['error' => 'Failed to fetch user profile'], 500);
+        }
+    }
+
+    public function updateUser(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            $user->update($request->only(['name', 'email']));
+            return response()->json($user);
+        } catch (JWTException $e) {
+            return response()->json(['error' => 'Failed to update user'], 500);
+        }
+    }
+    public function me(Request $request)
+    {
+         return response()->json(['error' => 'e user'], 200);
+    }
 }
